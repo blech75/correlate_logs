@@ -1,0 +1,10 @@
+steps:
+  - label: ":microscope: Lint Codebase"
+    command: "scripts/lint"
+    agents:
+      queue: "gcp2"
+
+  - label: ":microscope: Run Tests & Code Coverage"
+    command: "scripts/coverage -g"
+    agents:
+      queue: "gcp2"
