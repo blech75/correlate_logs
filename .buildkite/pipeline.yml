@@ -1,10 +1,34 @@
+env:
+  # lib_gen-specific config. should be equivalent to what is in .env.test
+  TARGET_DIR: "lib"
+  TEST_FILE_PATTERN: "*_test.py"
 steps:
-  - label: ":microscope: Lint Codebase"
-    command: "scripts/lint"
+  - label: ":microscope: Lint Codebase (Py3)"
+    commands:
+      - "echo '--- Creating venv'"
+      - "./scripts/venv create"
+      - "echo '--- Installing requirements'"
+      - "./scripts/venv install-deps -r requirements.txt"
+      - "echo '--- Installing dev requirements'"
+      - "./scripts/venv install-deps -r requirements_dev.txt"
+      - "echo '--- Lint Codebase'"
+      - "./scripts/lint"
+    env:
+      PY: "3"
     agents:
-      queue: "gcp2"
+      queue: "gen"
 
-  - label: ":microscope: Run Tests & Code Coverage"
-    command: "scripts/coverage -g"
+  - label: ":microscope: Run Tests & Code Coverage (Py3)"
+    commands:
+      - "echo '--- Creating venv'"
+      - "./scripts/venv create"
+      - "echo '--- Installing requirements'"
+      - "./scripts/venv install-deps -r requirements.txt"
+      - "echo '--- Installing dev requirements'"
+      - "./scripts/venv install-deps -r requirements_dev.txt"
+      - "echo '--- Tests & Code Coverage'"
+      - "./scripts/coverage -g"
+    env:
+      PY: "3"
     agents:
-      queue: "gcp2"
+      queue: "gen"
