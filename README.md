@@ -19,6 +19,15 @@ GOOGLE_CLOUD_PROJECT="gen-prod"
 COLOREDLOGS_AUTO_INSTALL="True"
 ```
 
+### create .env.test file
+
+```sh
+# test-specific env vars
+# also see ./.buildkite/pipeline.yml
+TARGET_DIR="lib"
+TEST_FILE_PATTERN='*_test.py'
+```
+
 ## Testing
 
 ```sh
