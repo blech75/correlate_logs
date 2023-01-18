@@ -1,0 +1,4 @@
+services:
+  correlate_logs:
+    # nothing here for now since this is not a GAE service.
+    deploy: false
