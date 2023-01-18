@@ -344,11 +344,11 @@ def sum_search_states(state1, state2):
         if k.endswith("Found") or k.endswith("New"):
             continue
 
-        curr = state1.get(k, [])
+        curr = state1.get(k) or []
         found = (
             sum_sets(state2.get(k) or [], state2.get(f"{k}Found") or [])
             if k in STATE_KEYS_TRACK_FOUND
-            else state2.get(k, [])
+            else (state2.get(k) or [])
         )
 
         new_state[k] = sum_sets(curr, found)
