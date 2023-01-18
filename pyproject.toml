@@ -1,0 +1,69 @@
+[build-system]
+requires = ["setuptools>=42"]
+build-backend = "setuptools.build_meta"
+
+
+[tool.black]
+# https://github.com/psf/black/tree/22.12.0/docs
+
+[tool.coverage.run]
+# https://coverage.readthedocs.io/en/5.5/config.html#run
+branch = true
+omit = [
+    # omit anything in a .local directory anywhere
+    '*/.local/*',
+
+    # omit core files and packages (includes virutal environments)
+    '*/site-packages/*',
+
+    # omit the tests themselves
+    '*_test.py',
+
+    # omit dev tooling
+    'scripts/*',
+
+    # omit IDE cruft
+    '.idea/*',
+    '.vscode/*'
+]
+
+[tool.coverage.report]
+# https://coverage.readthedocs.io/en/5.5/config.html#report
+ignore_errors = true
+skip_covered = true
+
+# Regexes for lines to exclude from consideration
+exclude_lines = [
+    # Have to re-enable the standard pragma
+    'pragma: no cover',
+
+    # Don't complain about missing debug-only code:
+    'def __repr__',
+    'if self\.debug',
+
+    # Don't complain if tests don't hit defensive assertion code:
+    'raise AssertionError',
+    'raise NotImplementedError',
+
+    # Don't complain if non-runnable code isn't run:
+    'if 0:',
+    'if __name__ == .__main__.:'
+]
+
+
+[tool.isort]
+# make isort compatible with black:
+# https://github.com/PyCQA/isort/blob/5.10.1/docs/configuration/profiles.md
+#
+# note: profile requires isort 5; otherwise use individual settings
+# https://github.com/psf/black/blob/21.12b0/docs/compatible_configs/isort/pyproject.toml
+profile = "black"
+
+# ignore non-essentials
+skip_gitignore = true
+
+extend_skip_glob = [".venv3/*"]
+
+
+[tool.pyright]
+# https://github.com/microsoft/pyright/blob/main/docs/configuration.md

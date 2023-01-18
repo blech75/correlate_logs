@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+# ----
+# boilerplate
+
+set -o errexit
+
+# include our scripts boilerplate and common functionality
+# shellcheck source=common
+scripts_dir=$(dirname "${BASH_SOURCE[0]}")
+source "${scripts_dir}"/common
+
+# ----
+# main
+
+args=(
+  '--gen2'
+  '--region=us-east1'
+  '--runtime=python310'
+  '--source=.'
+  '--entry-point=correlate_logs'
+  '--trigger-http'
+  '--allow-unauthenticated'
+
+  # https://cloud.google.com/functions/docs/configuring/timeout
+  '--timeout=60'
+)
+
+deploy_cmd="gcloud functions deploy correlate-logs ${args[*]}"
+echo "${c_gry}\$ ${deploy_cmd}${c_off}"
+$deploy_cmd

@@ -1,0 +1,191 @@
+#!/usr/bin/env bash
+
+# a thin wrapper around some linting and formatting tools. ideal for running
+# pre-commit and/or on CI builds. exits with 0 on success, or the underlying
+# tool's exit code if the tool failed.
+#
+# currently supported tools:
+#
+#   * flake8 (linter)
+#   * isort (formatter)
+#   * black (formatter)
+#   * modernize (transformer)
+#
+# (since isort, black, and modernize are python3 tools, they are only used if
+# available.)
+
+# ----
+# boilerplate
+
+set -o errexit
+
+# include our scripts boilerplate and common functionality
+# shellcheck source=common
+scripts_dir=$(dirname "${BASH_SOURCE[0]}")
+source "${scripts_dir}"/common
+
+# ----
+# help
+
+function docs() {
+  echo "Thin wrapper around some linting and formatting tools:"
+  echo
+  echo "  - flake8: highlights linting issues"
+  echo "  - isort: consistently formats imports"
+  echo "  - black: consistently formats code"
+  echo "  - modernize: converts code from Python 2 to Python 3. (disabled by default)"
+  echo
+  echo "This script runs in 'check' mode by default, which means that violations are"
+  echo "displayed from each tool and the files are left untouched."
+  echo
+  echo "Pass the '-f' argument to run this script in 'fix' mode, which will auto-apply"
+  echo "fixes for isort, black, and modernize issues that are found. Note that flake8 "
+  echo "is ignored in fix mode because it cannot auto-apply fixes for warnings."
+  echo
+  usage
+}
+
+function usage() {
+  echo "Usage: $(basename "$0") [-h] [-f] [-m]"
+  echo
+  echo "  -f   Fix files"
+  echo "  -h   Show help"
+  echo "  -m   Enable 'modernize'"
+}
+
+# ----
+# funcs
+
+function fail() {
+  echo -e ">> ${c_ylw}Please fix errors listed above${c_off} 🙏 💖"
+  # exit code from tool is passed as first arg
+  exit $1
+}
+
+function success() {
+  echo -e ">> ${c_grn}OK${c_off} 💯"
+  echo
+}
+
+function _modernize() {
+  # modernize is python3, picked up from pyenv (py2 projects) or pipenv (py3 projects)
+  # no config file is used
+  # CLEANUP: remove test/die after we migrate all projects to py3
+  if [ -z "$(which modernize)" ]; then
+    die "Missing modernize." \
+      "Install via: python3 -m pip install modernize"
+  fi
+
+  local args="--enforce"
+  [ "$1" == "Fixing" ] && args="-nw"
+
+  # using arrays to deal with quotes because bash is awesome. :-/
+  local find_cmd=(find . -type f -name '*.py' -not -ipath '*lib*' -not -ipath '*.venv*' -print0)
+  local xargs_cmd=(xargs -0 modernize --no-diff "${args}")
+
+  echo "$1 Python 3 compatibility via modernize..."
+  echo "${c_gry}\$ ${find_cmd[*]} | ${xargs_cmd[*]}${c_off}"
+  "${find_cmd[@]}" | "${xargs_cmd[@]}" || fail $?
+  success
+}
+
+function _flake8() {
+  local cmd="${venv_path}/bin/flake8 ${target_dir}"
+  local path_shim=""
+
+  # check for "./lib.dev/bin" because lib_gen does not have it. in that case,
+  # flake8 is expected to be installed in site-packages for the current python
+  # version.
+  #
+  # the check for py_version makes it easier to run py2 and py3 tests on the
+  # same checkout of the codebase with py2 using frozen libs and py3 using venv.
+  if [ "${py_version}" == "2" ] && [ -d "./lib.dev/bin" ]; then
+    # flake8 is frozen in ./lib.dev. as such, we need to set PYTHONPATH to only
+    # for this command.
+    # config is in .flake8
+    cmd="./lib.dev/bin/flake8 ${target_dir}"
+    path_shim="PYTHONPATH=.:lib.dev:${PYTHONPATH}"
+  fi
+
+  echo "Checking linting via flake8..."
+  echo "${c_gry}\$ ${cmd}${c_off}"
+  # CLEANUP: rework this to avoid `eval`
+  eval "${path_shim} ${cmd}" || fail $?
+  success
+}
+
+function _isort() {
+  # config is in pyproject.toml
+  local args=""
+  [ "$1" == "Checking" ] && args="--check"
+
+  local cmd="./.venv3/bin/isort ${target_dir} ${args}"
+
+  echo "$1 imports via isort..."
+  echo "${c_gry}\$ ${cmd}${c_off}"
+  ${cmd} || fail $?
+  success
+}
+
+function _black() {
+  # config is in pyproject.toml
+  local args=""
+  [ "$1" == "Checking" ] && args="--check"
+
+  local cmd="./.venv3/bin/black ${target_dir} ${args}"
+
+  echo "$1 formatting via black..."
+  echo "${c_gry}\$ ${cmd} ${c_off}"
+  ${cmd} || fail $?
+  success
+}
+
+# ----
+# defaults
+
+action="Checking"
+run_modernize=""
+
+# read env vars before we look for them so we can use what we define.
+# we use this in linting too because having TARGET_DIR defined speeds up
+# linting in lib_gen
+readTestEnvVars
+
+target_dir="${TARGET_DIR:-.}"
+
+# ----
+# main
+
+while getopts ":fhm" opt; do
+  case ${opt} in
+  f)
+    action="Fixing"
+    ;;
+
+  m)
+    run_modernize="true"
+    ;;
+
+  h)
+    showHelp
+    ;;
+
+  \?)
+    dieWithUsage "${error} Invalid option: -$OPTARG"
+    ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+# flake8 cannot auto-fix violations, so only run it in "checking" mode
+[ "${action}" == "Checking" ] && _flake8
+
+# CLEANUP: run modernize all the time
+[ "${run_modernize}" ] && _modernize $action
+
+# isort comes before black becuase isort sometimes introduces extra linebreaks
+# and black cleans everything up.
+_isort $action
+_black $action
+
+exit 0

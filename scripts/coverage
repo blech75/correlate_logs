@@ -1,0 +1,153 @@
+#!/usr/bin/env bash
+
+# thin wrapper around coverage. gathers coverage stats via unittest (or green)
+# and then runs a report.
+
+# ----
+# boilerplate
+
+set -o errexit
+
+# include our scripts boilerplate and common functionality
+# shellcheck source=common
+scripts_dir=$(dirname "${BASH_SOURCE[0]}")
+source "${scripts_dir}"/common
+
+# ----
+# help
+
+function docs() {
+  echo "Thin wrapper around Coverage.py to capture and present code coverage stats."
+  echo
+  usage
+}
+
+function usage() {
+  echo "Usage: $(basename "$0") [-g]"
+  echo "    -g    Green mode: Uses green (prettier, faster) to run coverage instead of unittest."
+  echo
+}
+
+# ----
+# constants
+
+# create our own temp dir and assign to TMPDIR env var. this is a workaround for
+# green 3.2.6, which uses `tempfile.TemporaryDirectory()`, a py3.2+ only method,
+# when the TMPDIR env var is unset.
+#
+# CLEANUP: remove when we fully transition to py3 and a newer version of green
+#
+tmpdir=$(mktemp)
+export TMPDIR="${tmpdir}"
+
+# ----
+# defaults
+
+# read env vars before we look for them so we can use what we define.
+readTestEnvVars
+
+runner="unittest"
+target_dir="${TARGET_DIR:-test}"
+test_file_pattern=${TEST_FILE_PATTERN:-'test_*.py'}
+
+# (re-)export so that test.py can pick it up
+export TARGET_DIR="$target_dir"
+export TEST_FILE_PATTERN="$test_file_pattern"
+
+if [ "${py_version}" == "2" ]; then
+  # green is vendored in ./lib.dev, so add it to the relevant paths
+  export PATH="./lib.dev/bin:$PATH"
+  export PYTHONPATH=".:lib.dev:$PYTHONPATH"
+fi
+
+# ----
+# main
+
+while getopts ":gh" opt; do
+  case ${opt} in
+  g)
+    runner="green"
+    ;;
+
+  h)
+    showHelp
+    ;;
+
+  \?)
+    dieWithUsage "${error} Invalid option: -$OPTARG"
+    ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+removePythonBytecodeFiles
+
+# exit status
+status=0
+
+case ${runner} in
+"green")
+  # green passes in its own list of omitted directories, which overrides our
+  # config in `pyproject.toml`, so we must duplicate the `omit` config here.
+  # see https://github.com/CleanCut/green/blob/69f40056d3408eee44f0a85f2c11b3dfea6142e3/green/config.py#L800-L805
+  #
+  # use an array and then concatenate it to avoid bash quoting issues
+  omit_patterns=(
+    '*/.local/*'
+    '*/site-packages/*'
+    'test/*'
+    '*_test.py'
+    'appengine_config.py'
+    'add_lib_paths.py'
+    'scripts/*'
+    'lib/*'
+    'lib.dev/*'
+    '*/google_appengine/*'
+    '.idea/*'
+    '.vscode/*'
+  )
+  omit_patterns_arg=$(
+    IFS=,
+    echo "${omit_patterns[*]}"
+  )
+
+  # `scripts.green` under py3 appears to have issues with threading and/or
+  # multiproccessing, so just use the binstub directly.
+  # CLEANUP: figure out what's going on.
+  if [ "${py_version}" == "3" ]; then
+    test_runner="$venv_path/bin/green"
+  else
+    test_runner="${py_executable} -m scripts.green"
+  fi
+
+  echo "Running Coverage via ${c_bld}${runner}${c_off}..."
+  cvg_run_cmd="${test_runner} $target_dir --file-pattern $test_file_pattern --run-coverage --clear-omit --omit-patterns ${omit_patterns_arg}"
+  echo "${c_gry}\$ ${cvg_run_cmd}${c_off}"
+  echo
+  $cvg_run_cmd
+  ;;
+
+"unittest")
+  echo "Running Coverage via ${c_bld}${runner}${c_off}..."
+  cvg_run_cmd="${py_executable} -m scripts.coverage run --module scripts.test"
+  echo "${c_gry}\$ ${cvg_run_cmd}${c_off}"
+  echo
+  $cvg_run_cmd
+  status=$?
+
+  if [ $status -eq 0 ]; then
+    echo
+    echo
+    cvg_rpt_cmd="${py_executable} -m scripts.coverage report --show-missing"
+    echo "${c_gry}\$ ${cvg_rpt_cmd}${c_off}"
+    echo
+    $cvg_rpt_cmd
+  fi
+  ;;
+
+\?)
+  die "${error} Unknown runner '${runner}'"
+  ;;
+esac
+
+exit $status

@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+
+# thin wrapper around twine to upload a version to google artifact registry
+
+# ----
+# boilerplate
+
+set -o errexit
+set -o pipefail
+
+# include our scripts boilerplate and common functionality
+# shellcheck source=common
+scripts_dir=$(dirname "${BASH_SOURCE[0]}")
+source "${scripts_dir}"/common
+
+# ----
+# help
+
+function docs() {
+  echo "Thin wrapper around twine to upload a built version from the dist directory to a Google Artifact Registry."
+  echo
+  echo "See https://cloud.google.com/artifact-registry/docs/python for more info."
+  echo
+  usage
+}
+
+function usage() {
+  echo "Usage: $(basename "$0") [-h] [-l LOCATION] [-p PROJECT] [-r REPO] VERSION"
+  echo
+  echo "    -l LOCATION    Google Cloud region of the Artifact Registry. Default: 'us-east1'"
+  echo "    -p PROJECT     Google Cloud project name the Artifact Registry is in. Default: 'gen-prod'"
+  echo "    -r REPO        Name of repository. Default: 'python-libs'"
+  echo
+  echo "    VERSION        Full version number (e.g. '1.0', '0.1.2')"
+  echo
+}
+
+# ----
+# constants
+
+# CLEANUP: make these configurable via opts or env vars
+pkg_name="genservice"
+dist_dir="dist"
+
+# ----
+# defaults
+
+# https://console.cloud.google.com/artifacts/python/gen-prod/us-east1/python-libs?project=gen-prod
+region="us-east1"
+project="gen-prod"
+repo="python-libs"
+
+# ----
+# main
+
+while getopts ":hl:p:r:" opt; do
+  case ${opt} in
+  l)
+    region="$OPTARG"
+    ;;
+
+  h)
+    showHelp
+    ;;
+
+  p)
+    project="$OPTARG"
+    ;;
+
+  r)
+    repo="$OPTARG"
+    ;;
+
+  \?)
+    dieWithUsage "${error} Invalid option: -$OPTARG"
+    ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+version="$1"
+
+if [ -z "${version}" ]; then
+  dieWithUsage "${error} Please provide a version number and/or ensure all supplied arguments have values."
+fi
+shift
+
+if [ "${py_version}" == "2" ]; then
+  die "${error} Publishing only works under Python 3. Prefix command with PY=3"
+fi
+
+shopt -s nullglob
+upload_files=()
+for f in ${dist_dir}/${pkg_name}-${version}*; do
+  upload_files+=($f)
+done
+shopt -u nullglob
+
+if [ -z "${upload_files[*]}" ]; then
+  die "${error} No files found in ./${dist_dir}/ for ${pkg_name} version ${version}"
+fi
+
+repo_url="https://${region}-python.pkg.dev/${project}/${repo}/"
+
+cmd="${py_executable} -m twine upload --verbose --repository-url ${repo_url} ${upload_files[*]}"
+
+echo "${c_gry}\$ ${cmd}${c_off}"
+echo
+exec $cmd

@@ -1,0 +1,18 @@
+# core python stuff
+setuptools
+wheel
+build
+
+# tooling
+pylint; python_version >= '3.0'
+black==22.12.0; python_version >= '3.0'
+isort==5.10.1; python_version >= '3.0'
+coverage[toml]==6.3.2; python_version >= '3.0'
+flake8==4.0.1; python_version >= '3.0'
+modernize==0.8.0; python_version >= '3.0'
+green==3.4.1; python_version >= '3.0'
+python-dotenv==0.20.0; python_version >= '3.0'
+ipython==8.3.0; python_version >= '3.0'
+PyYAML==6.0; python_version >= '3.0'
+
+coloredlogs==15.0.1

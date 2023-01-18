@@ -1,0 +1,243 @@
+#!/usr/bin/env bash
+
+# thin wrapper around some useful test commands. see usage for full details.
+
+# ----
+# boilerplate
+
+set -o errexit
+set -o pipefail
+
+# include our scripts boilerplate and common functionality
+# shellcheck source=common
+scripts_dir=$(dirname "${BASH_SOURCE[0]}")
+source "${scripts_dir}"/common
+
+# ----
+# help
+
+function docs() {
+  echo "Run Python tests with green and file watch support."
+  echo
+  usage
+  hint
+}
+
+function usage() {
+  echo "Usage: $(basename "$0") [-g] [-h] [-q] [-w] [target [...]] "
+  echo "    -g          Green mode: Uses green (prettier, faster) to run tests instead "
+  echo "                  of unittest"
+  echo "    -h          Help: Show full help"
+  echo "    -l          Logs: Display log output; equivalent to TEST_DEBUG=1 env var."
+  echo "    -v          Verbose mode: Output test names instead of dots"
+  echo "    -w          Watch mode: Uses ag + entr to watch for test changes."
+  echo "                  Type 'q' or ctrl-c to stop. Hit 'space' to trigger new run."
+  echo "    target ...  One ore more Python dotted-name notations for test target, e.g.:"
+  echo "                  - test (default/implied)"
+  echo "                  - test.test_foo"
+  echo "                  - test.test_foo.FooTest"
+  echo "                  - test.test_foo.FooTest.test_foo_returns_bar"
+  echo
+}
+
+function hint() {
+  echo "${c_bgrn}"
+  echo "Hint: To leverage green's shell completion for completing our test module names"
+  echo "in bash, add the following to your ~/.bash_profile"
+  echo "${c_off}${c_grn}"
+  echo "  # configure completion for green (python test runner)"
+  echo "  which green >&/dev/null && source \"\$(green --completion-file)\""
+  echo
+  echo "  # use green completion for './scripts/test', too."
+  echo "  #"
+  echo "  # NOTE: using './scripts/test' as the \"completion command name\" is a"
+  echo "  # workaround to avoid conflicting with bash's built-in 'test' command. since the"
+  echo "  # usual method running our test script is via './scripts/test', this works "
+  echo "  # \"good enough\" for now. :-/ (alternatively, make a custom alias for the test"
+  echo "  # runner and assign completions to that.)"
+  echo "  #"
+  echo "  complete -p green >&/dev/null && complete -F _green_completion ./scripts/test"
+  echo "${c_off}"
+}
+
+# ----
+# funcs
+
+function missingTool() {
+  echo "${error} Cannot find $1 in \$PATH."
+  echo "Run 'brew install $1'"
+}
+
+# ----
+# constants
+
+# create our own temp dir and assign to TMPDIR env var. this is a workaround for
+# green 3.2.6, which uses `tempfile.TemporaryDirectory()`, a py3.2+ only method,
+# when the TMPDIR env var is unset.
+#
+# CLEANUP: remove when we fully transition to py3 and a newer version of green
+#
+tmpdir=$(mktemp)
+export TMPDIR="${tmpdir}"
+
+# special test-related env var file
+env_test=".env.test"
+
+# ----
+# defaults
+
+# read env vars before we look for them so we can use what we define.
+readTestEnvVars
+
+mode="oneshot"
+runner="unittest"
+target_dir="${TARGET_DIR:-test}"
+test_file_pattern=${TEST_FILE_PATTERN:-'test_*.py'}
+verbosity=""
+
+# (re-)export so that test.py can pick it up
+export TARGET_DIR="$target_dir"
+export TEST_FILE_PATTERN="$test_file_pattern"
+
+if [ "${py_version}" == "2" ]; then
+  # green is vendored in ./lib.dev, so add it to the relevant paths
+  export PATH="./lib.dev/bin:$PATH"
+  export PYTHONPATH=".:lib.dev:$PYTHONPATH"
+fi
+
+# ----
+# main
+
+while getopts ":glhvw" opt; do
+  case ${opt} in
+  g)
+    runner="green"
+    ;;
+
+  h)
+    showHelp
+    ;;
+
+  l)
+    export TEST_DEBUG=1
+    ;;
+
+  v)
+    verbosity="-vv"
+    ;;
+
+  w)
+    mode="watch"
+    if [ "$(which ag)" == '' ]; then
+      die missingTool ag
+    fi
+    if [ "$(which entr)" == '' ]; then
+      die missingTool entr
+    fi
+    ;;
+
+  \?)
+    dieWithUsage "${error} Invalid option: -$OPTARG"
+    ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+removePythonBytecodeFiles
+
+# both unittest and green support multiple test targets in "dotted name" style,
+# so we can pass them along if the user does. this way, the user can run
+# specific tests instead of the whole suite. otherwise, use 'test' (the 'test'
+# dir/package) as the default.
+#
+targets="$target_dir"
+user_targets="$*"
+
+# add any additional targets passed
+if [ "${user_targets}" ]; then
+  targets="${user_targets}"
+fi
+
+case ${runner} in
+"green")
+  # -p specifies the test file pattern
+  # -l allows for logging to be captured
+  args="-p $test_file_pattern -l $verbosity"
+
+  # CLEANUP: figure out how to get green to report slow tests (the main purpose
+  # of scripts.test).
+  #
+  # `scripts.green` under py3 appears to have issues with threading and/or
+  # multiproccessing, so just use the binstub directly.
+  # CLEANUP: figure out what's going on.
+  if [ "${py_version}" == "3" ]; then
+    test_runner="$venv_path/bin/green"
+  else
+    test_runner="${py_executable} -m scripts.green"
+  fi
+
+  test_cmd="${test_runner} ${args} $targets"
+  ;;
+
+"unittest")
+  # do not pass 'test' dir as target; it's assumed in scripts.test.
+  if [ "$targets" == "$target_dir" ]; then
+    targets=""
+  fi
+
+  # we need to remove a 'v' from the verbosity because scripts.test only needs
+  # one 'v' to be verbose.
+  test_cmd="${py_executable} -m scripts.test ${verbosity/vv/v} $targets"
+  ;;
+
+*)
+  die "${error} Unknown runner '${runner}'"
+  ;;
+esac
+
+case ${mode} in
+"oneshot")
+  # run tests once and then exit
+  #
+  echo "Running tests via ${c_bld}${runner}${c_off}..."
+  echo "${c_gry}\$ ${test_cmd}${c_off}"
+  echo
+  exec $test_cmd
+  # we effectively exit after this due to 'exec'
+  ;;
+
+"watch")
+  # watch files for changes and run tests on change. (uses ag + entr)
+  #
+  # add --ignore-dir DIR for each ignore_dirs mentioned
+  # ignore_dirs="lib lib.dev"
+  ignore_dirs=".venv3"
+  ignore_args=""
+  for d in $ignore_dirs; do
+    ignore_args="${ignore_args:+$ignore_args }--ignore-dir ${d}"
+  done
+
+  # -l outputs filenames only
+  # --python only matches python source files (.py)
+  find_files_cmd="ag -l --python ${ignore_args}"
+
+  # -c clears the screen
+  # -d watches for added files
+  # watch_files_cmd="entr -c -d ${test_cmd}"
+  watch_files_cmd="entr -d ${test_cmd}"
+
+  # time (in secs) between test run finish and file watching start
+  sleep_time="1"
+
+  echo "Watching test files via ${c_bld}entr${c_off} and running tests via ${c_bld}${runner}${c_off}..."
+  echo "${c_gry}\$ ${find_files_cmd} | ${watch_files_cmd}${c_off}"
+  echo
+  until ${find_files_cmd} | ${watch_files_cmd}; do sleep $sleep_time; done
+  ;;
+
+*)
+  die "${error} Unknown mode '${mode}'"
+  ;;
+esac
+
+exit 0

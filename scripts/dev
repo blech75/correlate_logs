@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+
+# ----
+# boilerplate
+
+set -o errexit
+
+# include our scripts boilerplate and common functionality
+# shellcheck source=common
+scripts_dir=$(dirname "${BASH_SOURCE[0]}")
+source "${scripts_dir}"/common
+
+# enable coloredlogs support in our repl
+# shellcheck source=coloredlogs.env
+source "${scripts_dir}"/coloredlogs.env
+
+# ----
+# main
+
+args=(
+  '--target=correlate_logs'
+  '--signature-type http'
+  '--debug'
+  '--port=8080'
+)
+
+dev_cmd="functions-framework ${args[*]}"
+echo "${c_gry}\$ ${dev_cmd}${c_off}"
+${venv_bin_path}/${dev_cmd}

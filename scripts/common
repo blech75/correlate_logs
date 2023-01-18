@@ -1,0 +1,94 @@
+### BEGIN: project root boilerplate ------------------------------------------
+#
+# determine the project root and execute everything relative to it. this must
+# come first so we and our dependent scripts can correctly compute paths.
+#
+# https://stackoverflow.com/a/246128/2284440
+current_dir_abs_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+project_path="$(dirname "$current_dir_abs_path")"
+cd "$project_path"
+### END: project root boilerplate --------------------------------------------
+
+# terminal colors
+c_off=$'\e[0m'
+c_bld="$(tput bold)"
+c_gry="${c_bld}$(tput setaf 0)"
+c_red="$(tput setaf 1)"
+c_grn="$(tput setaf 2)"
+c_ylw="$(tput setaf 3)"
+c_blu="$(tput setaf 4)"
+c_brd="${c_bld}${c_red}"
+c_byl="${c_bld}${c_ylw}"
+c_bgrn="${c_bld}${c_grn}"
+
+error="${c_brd}Error:${c_off}"
+
+function showHelp() {
+  docs && exit 0
+}
+
+function die() {
+  for msg in "$@"; do
+    echo "$msg" >&2
+  done
+  exit 1
+}
+
+function dieWithUsage() {
+  for msg in "$@"; do
+    echo "$msg" >&2
+  done
+  echo >&2
+  usage >&2 && exit 1
+}
+
+# ----
+# python version management and switching
+
+pyenv_versions_file=".python-version"
+
+if [ ! -f "${pyenv_versions_file}" ]; then
+  die "${error} Missing ${c_bld}${pyenv_versions_file}${c_off} in project. Run ${c_bld}pyenv local VERSION${c_off} to create it."
+fi
+
+pyenv_py_versions_arr=($(cat ${pyenv_versions_file}))
+# join array so we can do for v in ${pyenv_versions}
+pyenv_py_versions="${pyenv_py_versions_arr[*]}"
+
+py_version="${PY:-3}"
+venv_path="./.venv${py_version}"
+venv_bin_path="${venv_path}/bin"
+py_executable="${venv_bin_path}/python"
+
+# prevent using our tools without venvs created
+if [ "$(basename $0)" != "venv" ]; then
+  if [ ! -e "${project_path}/${py_executable}" ]; then
+    die "${error} Missing Virutalenv (${c_bld}${venv_path}${c_off}) for Python ${py_version}. Use ${c_bld}./scripts/venv create${c_off} to create required Virtualenv(s)."
+  fi
+
+  echo "Using Python ${c_bgrn}${py_version}${c_off} environment in ${c_bld}${venv_path}${c_off}"
+  echo
+fi
+
+function removePythonBytecodeFiles() {
+  echo -n "Removing *.pyc files... "
+  find "$project_path" -name "*.pyc" -delete
+  echo "done!"
+  echo ""
+}
+
+function readTestEnvVars() {
+  # special test-related env var file
+  local env_test=".env.test"
+
+  # read test-specific env vars. important for lib_gen. we don't want to read in
+  # the main .env var s
+  if [ -f "${env_test}" ]; then
+    echo "Reading testing env vars from ${env_test} ..."
+    # quick hack to read and then print env vars
+    source "${env_test}"
+    echo
+    grep -v '^#' ${env_test} | while read line; do echo "  $line"; done
+    echo
+  fi
+}

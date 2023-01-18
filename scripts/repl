@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+
+# thin wrapper for python repl to make it easier to call, to allow it to be run
+# from anywhere, and to set some keys env vars.
+
+# ----
+# boilerplate
+
+set -o errexit
+
+# include our scripts boilerplate and common functionality
+# shellcheck source=common
+scripts_dir=$(dirname "${BASH_SOURCE[0]}")
+source "${scripts_dir}"/common
+
+# ----
+# help
+
+function docs() {
+    echo "Start a IPython-based REPL with access to the current codebase, dev environment vars, and stubbed GAE services."
+    echo
+    echo "Can optionally connect to the Cloud Datastore Emulator, used in ${c_bld}gaedev${c_off}, for access to data imported by ${c_bld}dsbackup${c_off}."
+    echo
+    usage
+}
+
+function usage() {
+    echo "Usage: $(basename "$0") [-h] [-p PORT]"
+    echo
+    echo "    -p PORT       Port number of Datastore Emulator. You can get this two ways:"
+    echo
+    echo "                  - Via startup msg from \`dev_appserver.py\`:"
+    echo -n "${c_gry}"
+    echo "                      [...]"
+    echo "                      Starting Cloud Datastore emulator at: http://localhost:12345"
+    echo "${c_off}"
+    echo "                  - Via startup msg from \`gcloud beta emulators datastore start\`:"
+    echo -n "${c_gry}"
+    echo "                      [...]"
+    echo "                      [datastore]   export DATASTORE_EMULATOR_HOST=localhost:12345"
+    echo "${c_off}"
+}
+
+# ----
+# defaults
+
+port=""
+
+# ----
+# main
+
+while getopts ":hp:" opt; do
+    case ${opt} in
+    h)
+        showHelp
+        ;;
+    p)
+        port=${OPTARG}
+        if [ -z "${port}" ]; then
+            dieWithUsage "${error} Missing port number." \
+                "> Please specify the port number of Datastore Emulator."
+        fi
+        ;;
+    \?)
+        dieWithUsage "${error} Invalid option: -$OPTARG"
+        ;;
+    :)
+        dieWithUsage "${error} Option -$OPTARG requires an argument."
+        ;;
+    esac
+done
+shift $((OPTIND - 1))
+
+echo
+
+# pause a beat so we can see the env vars
+sleep 1
+
+# enable coloredlogs support in our repl
+# shellcheck source=coloredlogs.env
+source "${scripts_dir}"/coloredlogs.env
+
+exec ${py_executable} -m scripts.repl
