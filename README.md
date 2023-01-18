@@ -103,3 +103,11 @@ NOTE: `correlate_logs.py` is not venv-aware, so explicitly use the venv python o
 jq -f ./lib/gcp_logs_find.jq < ~/Desktop/downloaded-logs.json
 jq -f ./lib/gcp_logs_find.jq < ~/Desktop/downloaded-logs.json | jq -f ./lib/gcp_logs_filter.jq
 ```
+
+---
+
+## TODO
+
+- reorg code in ./lib/\*
+- protect REST API w/ proper auth
+- ...
