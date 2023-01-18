@@ -1,0 +1,137 @@
+#!/usr/bin/env bash
+
+# thin wrapper around ./correlate_logs.py to make finding all log entries easier
+
+# ----
+# boilerplate
+
+set -o errexit
+set -o pipefail
+
+# include our scripts boilerplate and common functionality
+# shellcheck source=scripts/common
+proj_dir=$(dirname "${BASH_SOURCE[0]}")
+source "${proj_dir}"/scripts/common
+
+# ----
+# help
+
+function docs() {
+  echo "Thin wrapper around ./correlate_logs.py to make finding all log entries easier."
+  echo
+  echo "  - Accepts GCP log entries JSON via input file (\$LOGS_JSON)"
+  echo "  - Creates './traces/\$LOGS_JSON/' dir to store results"
+  echo "  - Iteratively calls './correlate_logs.py' until all log entries are found:"
+  echo "    - Query input is saved as 'step_N.json'"
+  echo "    - Query response is saved as 'step_N.resp.json'"
+  echo "  - Saves all log entries to 'log_entries.json', sorted by timestamp"
+  echo
+  usage
+}
+
+function usage() {
+  echo "Usage: $(basename "$0") [-h] [LOGS_JSON]"
+  echo
+  echo "  -h          Show help"
+  echo "  LOGS_JSON   File containing GCP log entries as JSON"
+}
+
+# ----
+# constants
+
+max_iterations="${MAX_ITERATIONS:-32}"
+
+# ----
+# defaults
+
+traces_dir="${TRACES_DIR:-traces}"
+
+# ----
+# main
+
+while getopts ":h" opt; do
+  case ${opt} in
+  h)
+    showHelp
+    ;;
+
+  \?)
+    dieWithUsage "${error} Invalid option: -$OPTARG"
+    ;;
+  esac
+done
+shift $((OPTIND - 1))
+
+input_file="$1"
+
+if [ -z "${input_file}" ]; then
+  dieWithUsage "${error} Please provide an input file."
+fi
+shift
+
+trace_name=$(basename -s .json "${input_file}")
+trace_path="./${traces_dir}/${trace_name}"
+
+if [ -d "${trace_path}" ]; then
+  read -r -p ">> Overwrite ${c_bld}${trace_path}${c_off} ? [y/N] " answer
+  case ${answer:0:1} in
+  y | Y) ;;
+  *)
+    exit 0
+    ;;
+  esac
+  echo
+  rm -rf "${trace_path}"
+fi
+
+mkdir -p "${trace_path}"
+
+for ((i = 0; i <= max_iterations; i++)); do
+  j=$((i + 1))
+
+  step_file="${trace_path}/step_${i}.json"
+  step_next_file="${trace_path}/step_${j}.json"
+
+  if [[ $i == 0 ]]; then
+    echo "Copying input JSON to ${step_file} ..."
+    cp -a "${input_file}" "${step_file}"
+
+    # tell correlate_logs.py that our step_0.json file is GCP logs JSON
+    f_arg="-l"
+  else
+    # further steps are search state JSON
+    f_arg="-s"
+  fi
+
+  cmd="./correlate_logs.py ${f_arg} -f ${step_file}"
+  echo
+  echo "${c_gry}\$ ${cmd} > ${step_next_file}${c_off}"
+
+  # ./correlate_logs.py exits with non-zero status when finished, so wrap call
+  # with set +o/-o errexit
+  set +o errexit
+
+  ${py_executable} ${cmd} >"${step_next_file}"
+  status=$?
+
+  set -o errexit
+
+  ( ((status >= 8)) || ((i >= max_iterations))) && break
+done
+
+log_entries_json="${trace_path}"/log_entries.json
+echo
+echo "Concatenating log entries..."
+echo
+cmd="jq -f concat_log_entries.jq -s ${trace_path}/step_*.resp.json"
+echo "${c_gry}\$ ${cmd} > ${log_entries_json}${c_off}"
+${cmd} >"${log_entries_json}"
+echo
+
+log_entries_count=$(jq -e 'length' <"${log_entries_json}")
+echo "Saved ${log_entries_count} log entries to ${log_entries_json}"
+echo
+
+cmd="jq -f summarize_results.jq ${step_next_file}"
+echo "${c_gry}\$ ${cmd}${c_off}"
+${cmd}

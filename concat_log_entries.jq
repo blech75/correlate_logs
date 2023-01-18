@@ -1,0 +1,1 @@
+[.[].logEntries[]] | sort_by(.timestamp)
