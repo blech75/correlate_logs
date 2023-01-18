@@ -1,6 +1,9 @@
 # GCP Logs Correlator Service
 
-Powers [GCP Logs Correlator](https://apartmenttherapy.retool.com/apps/6c843eda-66c3-11ed-bb5d-b33e22b89336/GCP%20Logs%20Correlator), a Retool app.
+A Google Cloud Function that powers [GCP Logs Correlator](https://apartmenttherapy.retool.com/apps/6c843eda-66c3-11ed-bb5d-b33e22b89336/GCP%20Logs%20Correlator), a Retool app.
+
+Also includes a standalone CLI tool (`./correlate_logs.py`) w/ a wrapper script
+(`./correlate_logs`) for usage without a web UI.
 
 ## Development Environment Setup
 
