@@ -1,4 +1,6 @@
-# GCP Logs Correlator
+# GCP Logs Correlator Service
+
+Powers [GCP Logs Correlator](https://apartmenttherapy.retool.com/apps/6c843eda-66c3-11ed-bb5d-b33e22b89336/GCP%20Logs%20Correlator), a Retool app.
 
 ## Development Environment Setup
 
