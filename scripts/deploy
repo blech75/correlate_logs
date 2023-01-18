@@ -14,11 +14,11 @@ source "${scripts_dir}"/common
 # main
 
 args=(
-  '--gen2'
-  '--region=us-east1'
-  '--runtime=python310'
   '--source=.'
   '--entry-point=correlate_logs'
+  '--runtime=python310'
+  '--gen2'
+  '--region=us-east1'
   '--trigger-http'
   '--allow-unauthenticated'
 
