@@ -19,7 +19,7 @@
 # some extra things not in our .gitignore
 \#*#
 *~
-.*
+.?*
 *.bak
 
 # ignore other env files because dotenv will detect and use them
@@ -31,8 +31,23 @@
 # unit tests
 lib/**/*_test.py
 
+# dev reqs
+requirements_dev.txt
+
 # local tooling
 scripts
+pyproject.toml
 
 # from ./correlate_logs
 traces
+
+# docs
+*.md
+
+# any random local JS files
+*.js
+
+# cli tool, which currently conflicts with main.correlate_logs
+/correlate_logs
+/correlate_logs.py
+/*.jq
