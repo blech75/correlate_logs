@@ -319,6 +319,7 @@ STATE_KEYS_COPY = ["project", "timeRangeStart", "timeRangeEnd"]
 STATE_KEYS_TRACK_FOUND = [
     "tasks",
     "traces",
+    "requestIds",
     "pubSubMessageIds",
     "posts",
     "recipes",

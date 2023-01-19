@@ -55,8 +55,15 @@ def filterSortUnique($entries): $entries | map(select(. != null)) | sort | uniqu
   tasks: .tasks,
   traces: .traces,
   #
+  #
   # we don't need legacyAppEngineLogEntries or structuredLogMessages (raw data)
   # in the final state.
+  #
+  #
+  # ### extract standard values
+  #
+  requestIds: [.legacyAppEngineLogEntries[].protoPayload.requestId] | filterSortUnique(.),
+  #
   #
   # ### extract "custom" values from structured logs
   #
@@ -70,6 +77,8 @@ def filterSortUnique($entries): $entries | map(select(. != null)) | sort | uniqu
   # correlate the current set of log entries to other yet-to-be-found log
   # entries. these entries/values are output courtesy of helper methods in
   # lib_gen.
+  #
+  # CLEANUP: maybe nest under "found" key?
   #
   # these found values may not be present in the current (or accumulated) set of
   # log entries. we specifically want to expand the next logs query to include
