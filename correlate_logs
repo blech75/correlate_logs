@@ -139,6 +139,24 @@ log_entries_count=$(jq -e 'length' <"${log_entries_json}")
 echo "Saved ${log_entries_count} log entries to ${log_entries_json}"
 echo
 
-cmd="jq -f summarize_results.jq ${step_next_file}"
+log_entries_request_json="${trace_path}"/log_entries_by_request_id.json
+cmd="jq -f index_log_entries_by_request_id.jq ${log_entries_json}"
+echo "${c_gry}\$ ${cmd} > ${log_entries_request_json}${c_off}"
+${cmd} >"${log_entries_request_json}"
+echo
+
+log_entries_trace_json="${trace_path}"/log_entries_by_trace_id.json
+cmd="jq --argfile logEntriesByRequestId ${log_entries_request_json} -f index_log_entries_by_trace_id.jq ${log_entries_json}"
+echo "${c_gry}\$ ${cmd} > ${log_entries_trace_json}${c_off}"
+${cmd} >"${log_entries_trace_json}"
+echo
+
+trace_summary_json="${trace_path}"/trace_summary.json
+cmd="jq -f summarize_traces.jq ${log_entries_trace_json}"
+echo "${c_gry}\$ ${cmd} > ${trace_summary_json}${c_off}"
+${cmd} >"${trace_summary_json}"
+echo
+
+cmd="jq -f summarize_results.jq ${final_step_file}"
 echo "${c_gry}\$ ${cmd}${c_off}"
 ${cmd}
