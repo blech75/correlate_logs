@@ -86,6 +86,8 @@ fi
 
 mkdir -p "${trace_path}"
 
+final_step_file=""
+
 for ((i = 0; i <= max_iterations; i++)); do
   j=$((i + 1))
 
@@ -111,10 +113,15 @@ for ((i = 0; i <= max_iterations; i++)); do
   # with set +o/-o errexit
   set +o errexit
 
-  ${py_executable} ${cmd} >"${step_next_file}"
+  contents=$(${py_executable} ${cmd})
   status=$?
-
   set -o errexit
+
+  # only write state when response is not "filter too big" (empty)
+  if [ $status -ne 8 ]; then
+    echo "$contents" >"${step_next_file}"
+    final_step_file="${step_next_file}"
+  fi
 
   ( ((status >= 8)) || ((i >= max_iterations))) && break
 done
