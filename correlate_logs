@@ -40,10 +40,6 @@ function usage() {
 # constants
 
 max_iterations="${MAX_ITERATIONS:-32}"
-
-# ----
-# defaults
-
 traces_dir="${TRACES_DIR:-traces}"
 
 # ----
