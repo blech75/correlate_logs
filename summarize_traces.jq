@@ -1,13 +1,13 @@
-def getProtoPayloadEntries($entries): $entries | map(select(has("protoPayload")));
-def getLogMessagesFromProtoPayload($entries): $entries | [.[].protoPayload] | map(select(has("line"))) | [.[].line[].logMessage];
-def getStructuredLogEntries($entries): $entries | map(select(has("jsonPayload")));
-def getPubSubMessagesFromJsonPayload($entries): $entries | [.[].jsonPayload] | map(select(has("pubSubMessage")));
-def filterSortUnique($entries): $entries | map(select(. != null)) | sort | unique;
-#
-def parseTimestampToNs($ts): (($ts[0:19] + "Z" | fromdateiso8601) * 1000) + ($ts[20:26] | tonumber) / 1000 | round;
-def duration($s;$e): (parseTimestampToNs($e) - parseTimestampToNs($s)) / 1000;
-def formatTraceId($entry): ($entry.trace // "null") | split("/")[-1];
-#
+module {
+  desc: "summarizes all traces' log entries via key domain object info and counts of other log data.",
+  input: "object(keys: str(<trace id>); values: array(object(<log entry>)))",
+  returns: "object(keys: str(<trace id>); values: array(object()))"
+};
+
+include "utils";
+
+# ----
+
 def summarizeTraceEntries($entries):
   getStructuredLogEntries($entries) as $structuredLogEntries |
   getProtoPayloadEntries($entries) as $protoPayloadEntries |
@@ -17,6 +17,7 @@ def summarizeTraceEntries($entries):
   [$protoPayloadEntries[].protoPayload.taskName] | filterSortUnique(.) as $taskIds |
   ($entries | min_by(.timestamp) | .timestamp) as $timeRangeStart |
   ($entries | max_by(._timestampEnd) | ._timestampEnd) as $timeRangeEnd |
+
   {
     $timeRangeStart,
     $timeRangeEnd,
@@ -31,7 +32,7 @@ def summarizeTraceEntries($entries):
     #
     found: {
       deferredTasks: $logMessages | map(capture("task:(?<id>\\d+)"; "g") | .id) | filterSortUnique(.),
-      parentTraces: $logMessages | map(capture("trace:(?<id>[^;]+)"; "g") | .id) | filterSortUnique(.) |  map(split("/")[-1]),
+      parentTraces: $logMessages | map(capture("trace:(?<id>[^;]+)"; "g") | .id) | filterSortUnique(.) |  map(formatTraceId(.)),
       posts: $logMessages | map(capture("post:(?<id>\\d+)"; "g") | .id) | filterSortUnique(.),
       recipes: $logMessages | map(capture("recipe:(?<id>\\d+)"; "g") | .id) | filterSortUnique(.),
       recipeCollections: $logMessages | map(capture("recipeCollection:(?<id>\\d+)"; "g") | .id) | filterSortUnique(.),

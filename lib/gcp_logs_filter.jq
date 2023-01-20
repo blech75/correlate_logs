@@ -11,6 +11,8 @@ def traces($entries): if ($entries | length) > 0 then "trace=(\(toConditonal($en
 def tracesRegex($entries): if ($entries | length) > 0 then "trace=~\"projects/\(.project)/traces/(\(toRegexConditonal($entries)))\"" else null end;
 def insertIdsRegex($entries): if ($entries | length) > 0 then "-insertId=~\"(\(toRegexConditonal($entries)))\"" else null end;
 
+# ----
+
 {
   project: .project,
   #
