@@ -59,7 +59,7 @@ TEST_FILE_PATTERN='*_test.py'
 
 ## CLI usage
 
-NOTE: requires `jq` (`brew install jq`)
+NOTE: requires [`jq`](https://stedolan.github.io/jq/) via [Homebrew](https://brew.sh) (`brew install jq`)
 
 ### Find all log entries (via wrapper script)
 
