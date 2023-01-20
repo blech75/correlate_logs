@@ -139,16 +139,16 @@ log_entries_count=$(jq -e 'length' <"${log_entries_json}")
 echo "Saved ${log_entries_count} log entries to ${log_entries_json}"
 echo
 
-log_entries_request_json="${trace_path}"/log_entries_by_request_id.json
-cmd="jq -f index_log_entries_by_request_id.jq ${log_entries_json}"
-echo "${c_gry}\$ ${cmd} > ${log_entries_request_json}${c_off}"
-${cmd} >"${log_entries_request_json}"
-echo
-
 log_entries_insert_json="${trace_path}"/log_entries_by_insert_id.json
 cmd="jq -f index_log_entries_by_insert_id.jq ${log_entries_json}"
 echo "${c_gry}\$ ${cmd} > ${log_entries_insert_json}${c_off}"
 ${cmd} >"${log_entries_insert_json}"
+echo
+
+log_entries_request_json="${trace_path}"/log_entries_by_request_id.json
+cmd="jq -f index_log_entries_by_request_id.jq ${log_entries_json}"
+echo "${c_gry}\$ ${cmd} > ${log_entries_request_json}${c_off}"
+${cmd} >"${log_entries_request_json}"
 echo
 
 log_entries_trace_json="${trace_path}"/log_entries_by_trace_id.json
