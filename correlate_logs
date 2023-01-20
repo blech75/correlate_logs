@@ -25,15 +25,125 @@ function docs() {
   echo "    - Query input is saved as 'step_N.json'"
   echo "    - Query response is saved as 'step_N.resp.json'"
   echo "  - Saves all log entries to 'log_entries.json', sorted by timestamp"
+  echo "  - Post-processes log entries to index and extract data"
   echo
   usage
 }
 
 function usage() {
-  echo "Usage: $(basename "$0") [-h] [LOGS_JSON]"
+  echo "Usage: $(basename "$0") [-h] [-s] [LOGS_JSON]"
   echo
   echo "  -h          Show help"
+  echo "  -s          Skip GCP queries and run post-processing on existing query results."
+  echo "              (Useful during development to test post-processing logic independently of querying)"
+  echo
   echo "  LOGS_JSON   File containing GCP log entries as JSON"
+}
+
+# ----
+# funcs
+
+function queryLogsApi() {
+  local input_file=$1
+  local trace_path=$2
+
+  if [ -d "${trace_path}" ]; then
+    read -r -p ">> Overwrite ${c_bld}${trace_path}${c_off} ? [y/N] " answer
+    case ${answer:0:1} in
+    y | Y) ;;
+    *)
+      exit 1
+      ;;
+    esac
+    echo
+    rm -rf "${trace_path}"
+  fi
+
+  mkdir -p "${trace_path}"
+
+  echo
+  echo "Querying for log entries..."
+  echo
+
+  for ((i = 0; i <= max_iterations; i++)); do
+    j=$((i + 1))
+
+    step_file="${trace_path}/step_${i}.json"
+    step_next_file="${trace_path}/step_${j}.json"
+
+    if [[ $i == 0 ]]; then
+      echo "Copying input JSON to ${step_file} ..."
+      cp -a "${input_file}" "${step_file}"
+
+      # tell correlate_logs.py that our step_0.json file is GCP logs JSON
+      f_arg="-l"
+    else
+      # further steps are search state JSON
+      f_arg="-s"
+    fi
+
+    cmd="./correlate_logs.py ${f_arg} -f ${step_file}"
+    echo
+    echo "${c_gry}\$ ${cmd} > ${step_next_file}${c_off}"
+
+    # ./correlate_logs.py exits with non-zero status when finished, so wrap call
+    # with set +o/-o errexit
+    set +o errexit
+
+    contents=$(${py_executable} ${cmd})
+    status=$?
+    set -o errexit
+
+    # only write state when response is not "filter too big" (empty)
+    if [ $status -ne 8 ]; then
+      echo "$contents" >"${step_next_file}"
+    fi
+
+    ( ((status >= 8)) || ((i >= max_iterations))) && break
+  done
+}
+
+function postProcessLogs() {
+  local trace_path="$1"
+  local final_step_file=""
+
+  log_entries_json="${trace_path}"/log_entries.json
+  echo
+  echo "Concatenating log entries..."
+  cmd="jq -f concat_log_entries.jq -s ${trace_path}/step_*.resp.json"
+  echo "${c_gry}\$ ${cmd} > ${log_entries_json}${c_off}"
+  ${cmd} >"${log_entries_json}"
+  log_entries_count=$(jq -e 'length' <"${log_entries_json}")
+  echo "> Saved ${log_entries_count} log entries to ${log_entries_json}"
+  echo
+
+  echo "Creating indexes..."
+  log_entries_insert_json="${trace_path}"/log_entries_by_insert_id.json
+  cmd="jq -f index_log_entries_by_insert_id.jq ${log_entries_json}"
+  echo "${c_gry}\$ ${cmd} > ${log_entries_insert_json}${c_off}"
+  ${cmd} >"${log_entries_insert_json}"
+
+  log_entries_request_json="${trace_path}"/log_entries_by_request_id.json
+  cmd="jq -f index_log_entries_by_request_id.jq ${log_entries_json}"
+  echo "${c_gry}\$ ${cmd} > ${log_entries_request_json}${c_off}"
+  ${cmd} >"${log_entries_request_json}"
+
+  log_entries_trace_json="${trace_path}"/log_entries_by_trace_id.json
+  cmd="jq -f index_log_entries_by_trace_id.jq --argfile logEntriesByRequestId ${log_entries_request_json} ${log_entries_json}"
+  echo "${c_gry}\$ ${cmd} > ${log_entries_trace_json}${c_off}"
+  ${cmd} >"${log_entries_trace_json}"
+  echo
+
+  echo "Creating summaries..."
+  trace_summary_json="${trace_path}"/trace_summary.json
+  cmd="jq -f summarize_traces.jq ${log_entries_trace_json}"
+  echo "${c_gry}\$ ${cmd} > ${trace_summary_json}${c_off}"
+  ${cmd} >"${trace_summary_json}"
+
+  final_step_file=$(ls -t "${trace_path}"/step_*.json | grep -v '.resp' | head -1)
+  cmd="jq -f summarize_results.jq ${final_step_file}"
+  echo "${c_gry}\$ ${cmd}${c_off}"
+  ${cmd}
 }
 
 # ----
@@ -43,12 +153,21 @@ max_iterations="${MAX_ITERATIONS:-32}"
 traces_dir="${TRACES_DIR:-traces}"
 
 # ----
+# defaults
+
+post_process_only=""
+
+# ----
 # main
 
-while getopts ":h" opt; do
+while getopts ":hs" opt; do
   case ${opt} in
   h)
     showHelp
+    ;;
+
+  s)
+    post_process_only="true"
     ;;
 
   \?)
@@ -60,105 +179,15 @@ shift $((OPTIND - 1))
 
 input_file="$1"
 
-if [ -z "${input_file}" ]; then
-  dieWithUsage "${error} Please provide an input file."
-fi
+[ -z "${input_file}" ] && dieWithUsage "${error} Please provide an input file."
 shift
 
 trace_name=$(basename -s .json "${input_file}")
 trace_path="./${traces_dir}/${trace_name}"
 
-if [ -d "${trace_path}" ]; then
-  read -r -p ">> Overwrite ${c_bld}${trace_path}${c_off} ? [y/N] " answer
-  case ${answer:0:1} in
-  y | Y) ;;
-  *)
-    exit 0
-    ;;
-  esac
-  echo
-  rm -rf "${trace_path}"
+if [ -z "${post_process_only}" ]; then
+  queryLogsApi "${input_file}" "${trace_path}"
+  [ $? -eq 1 ] && exit 0
 fi
 
-mkdir -p "${trace_path}"
-
-final_step_file=""
-
-for ((i = 0; i <= max_iterations; i++)); do
-  j=$((i + 1))
-
-  step_file="${trace_path}/step_${i}.json"
-  step_next_file="${trace_path}/step_${j}.json"
-
-  if [[ $i == 0 ]]; then
-    echo "Copying input JSON to ${step_file} ..."
-    cp -a "${input_file}" "${step_file}"
-
-    # tell correlate_logs.py that our step_0.json file is GCP logs JSON
-    f_arg="-l"
-  else
-    # further steps are search state JSON
-    f_arg="-s"
-  fi
-
-  cmd="./correlate_logs.py ${f_arg} -f ${step_file}"
-  echo
-  echo "${c_gry}\$ ${cmd} > ${step_next_file}${c_off}"
-
-  # ./correlate_logs.py exits with non-zero status when finished, so wrap call
-  # with set +o/-o errexit
-  set +o errexit
-
-  contents=$(${py_executable} ${cmd})
-  status=$?
-  set -o errexit
-
-  # only write state when response is not "filter too big" (empty)
-  if [ $status -ne 8 ]; then
-    echo "$contents" >"${step_next_file}"
-    final_step_file="${step_next_file}"
-  fi
-
-  ( ((status >= 8)) || ((i >= max_iterations))) && break
-done
-
-log_entries_json="${trace_path}"/log_entries.json
-echo
-echo "Concatenating log entries..."
-echo
-cmd="jq -f concat_log_entries.jq -s ${trace_path}/step_*.resp.json"
-echo "${c_gry}\$ ${cmd} > ${log_entries_json}${c_off}"
-${cmd} >"${log_entries_json}"
-echo
-
-log_entries_count=$(jq -e 'length' <"${log_entries_json}")
-echo "Saved ${log_entries_count} log entries to ${log_entries_json}"
-echo
-
-log_entries_insert_json="${trace_path}"/log_entries_by_insert_id.json
-cmd="jq -f index_log_entries_by_insert_id.jq ${log_entries_json}"
-echo "${c_gry}\$ ${cmd} > ${log_entries_insert_json}${c_off}"
-${cmd} >"${log_entries_insert_json}"
-echo
-
-log_entries_request_json="${trace_path}"/log_entries_by_request_id.json
-cmd="jq -f index_log_entries_by_request_id.jq ${log_entries_json}"
-echo "${c_gry}\$ ${cmd} > ${log_entries_request_json}${c_off}"
-${cmd} >"${log_entries_request_json}"
-echo
-
-log_entries_trace_json="${trace_path}"/log_entries_by_trace_id.json
-cmd="jq -f index_log_entries_by_trace_id.jq --argfile logEntriesByRequestId ${log_entries_request_json} ${log_entries_json}"
-echo "${c_gry}\$ ${cmd} > ${log_entries_trace_json}${c_off}"
-${cmd} >"${log_entries_trace_json}"
-echo
-
-trace_summary_json="${trace_path}"/trace_summary.json
-cmd="jq -f summarize_traces.jq ${log_entries_trace_json}"
-echo "${c_gry}\$ ${cmd} > ${trace_summary_json}${c_off}"
-${cmd} >"${trace_summary_json}"
-echo
-
-cmd="jq -f summarize_results.jq ${final_step_file}"
-echo "${c_gry}\$ ${cmd}${c_off}"
-${cmd}
+postProcessLogs "${trace_path}"
