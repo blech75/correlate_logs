@@ -1,18 +1,28 @@
-# core python stuff
+# This file, `venv_requrirements.txt`, lists the prerequisites for our local
+# development environment, before we even think about our service dependencies.
+
+### core python packages
+#
+# the basics, to be sure we're all starting from the same place.
+#
 setuptools
 wheel
-build
+build  # only used by lib_gen, but probably worth having everywhere
 
-# tooling
-pylint; python_version >= '3.0'
+
+### tooling dependencies
+#
+# CLEANUP: anything listed here should probably be added to genservice[dev]
+# https://github.com/apartmenttherapy/lib_gen/blob/main/setup.py
+#
+pylint==2.17; python_version >= '3.0'
 black==22.12.0; python_version >= '3.0'
-isort==5.10.1; python_version >= '3.0'
-coverage[toml]==6.3.2; python_version >= '3.0'
-flake8==4.0.1; python_version >= '3.0'
+isort==5.12.*; python_version >= '3.0'
+coverage[toml]==6.5.*; python_version >= '3.0'
+flake8==6.0.*; python_version >= '3.0'
 modernize==0.8.0; python_version >= '3.0'
-green==3.4.1; python_version >= '3.0'
-python-dotenv==0.20.0; python_version >= '3.0'
-ipython==8.3.0; python_version >= '3.0'
+green==3.4.*; python_version >= '3.0'
+python-dotenv==1.0.*; python_version >= '3.0'
+ipython==8.12.*; python_version >= '3.0'
 PyYAML==6.0; python_version >= '3.0'
-
 coloredlogs==15.0.1

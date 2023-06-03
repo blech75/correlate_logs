@@ -88,9 +88,9 @@ function dieWithUsage() {
   local topic=$1
   shift
   for msg in "$@"; do
-    echo "$msg" >&2
+    echo_ "$msg"
   done
-  echo >&2
+  echo_
   usage "$topic" >&2 && exit 1
 }
 
@@ -100,9 +100,9 @@ function validateEnvironment() {
       "Run ${c_bld}brew install pyenv${c_off} and follow instructions to set up your shell."
   fi
 
-  echo "Using $(pyenv --version) installed in ${c_bld}$(pyenv root)${c_off}"
-  echo "${c_bld}${pyenv_versions_file}${c_off} specifies Python version(s) ${c_bld}${pyenv_py_versions}${c_off}"
-  echo
+  echo_ "Using $(pyenv --version) installed in ${c_bld}$(pyenv root)${c_off}"
+  echo_ "${c_bld}${pyenv_versions_file}${c_off} specifies Python version(s) ${c_bld}${pyenv_py_versions}${c_off}"
+  echo_
 
   # pyenv validates all specified python versions each time a cmd is executed, so
   # we only need to check once.
@@ -120,11 +120,11 @@ function findPythonVersion() {
   local v=$1
   local v_major=$2
 
-  echo "${c_bld}Python $v${c_off}"
+  echo_ "${c_bld}Python $v${c_off}"
 
   # output some basic info to give users context
   pyenv_py_path=$(pyenv which "python${v_major}")
-  echo "✅ Found in ${c_bld}${pyenv_py_path}${c_off}"
+  echo_ "✅ Found in ${c_bld}${pyenv_py_path}${c_off}"
 }
 
 function findVirtualenvLib() {
@@ -135,19 +135,19 @@ function findVirtualenvLib() {
 
   set +o errexit
   pip_output=$("python${v_major}" -m pip show virtualenv 2>&1)
-  if [ $? -eq 1 ]; then
-    # reset errexit so we fail if pip fails
-    # NOTE: it seems this needs to come _after_ the $? check.
-    set -o errexit
-    echo "🟠 Missing ${c_bld}virtualenv${c_off} package in Python ${v}"
+  status=$?
+  set -o errexit
+
+  if [ $status -eq 1 ]; then
+    echo_ "🟠 Missing ${c_bld}virtualenv${c_off} package in Python ${v}"
     if [ "${mode}" == "install" ]; then
-      echo
+      echo_
       installVirtualenvLib $v $v_major
     fi
   else
     location=$(echo "${pip_output}" | grep -E '^Location')
     location_path=(${location//:/ })
-    echo "✅ Using ${c_bld}virtualenv${c_off} package from ${c_bld}${location_path[1]}${c_off}"
+    echo_ "✅ Using ${c_bld}virtualenv${c_off} package from ${c_bld}${location_path[1]}${c_off}"
   fi
 }
 
@@ -158,11 +158,11 @@ function installVirtualenvLib() {
   # suppress the py2 warning
   export PIP_NO_PYTHON_VERSION_WARNING=1
 
-  echo "> Installing ${c_bld}virtualenv${c_off} package to Python ${v} from pyenv... "
+  echo_ "> Installing ${c_bld}virtualenv${c_off} package to Python ${v} from pyenv... "
   venv_install_cmd="python${v_major} -m pip install -q virtualenv"
-  echo "\$ ${c_gry}$venv_install_cmd${c_off}"
+  echo_ "\$ ${c_gry}$venv_install_cmd${c_off}"
   $venv_install_cmd
-  echo
+  echo_
 
   unset PIP_NO_PYTHON_VERSION_WARNING
 }
@@ -173,9 +173,9 @@ function findVirtualenvDir() {
   local venv_dir="./.venv${v_major}"
 
   if [ -d "${venv_dir}" ]; then
-    echo "✅ Virtualenv exists in ${c_bld}${venv_dir}${c_off}"
+    echo_ "✅ Virtualenv exists in ${c_bld}${venv_dir}${c_off}"
   else
-    echo "🟠 Missing Python ${v} Virtualenv in ${c_bld}${venv_dir}${c_off}"
+    echo_ "🟠 Missing Python ${v} Virtualenv in ${c_bld}${venv_dir}${c_off}"
   fi
 }
 
@@ -187,23 +187,23 @@ function createVirtualenv() {
   # suppress the py2 warning
   export PIP_NO_PYTHON_VERSION_WARNING=1
 
-  echo "> Creating Virtualenv for Python $v in ${c_bld}${venv_dir}${c_off} ..."
+  echo_ "> Creating Virtualenv for Python $v in ${c_bld}${venv_dir}${c_off} ..."
   venv_create_cmd="python${v_major} -m virtualenv .venv${v_major} -q"
-  echo "\$ ${c_gry}${venv_create_cmd}${c_off}"
+  echo_ "\$ ${c_gry}${venv_create_cmd}${c_off}"
   $venv_create_cmd
-  echo
+  echo_
 
-  echo "> Upgrading pip for Python $v virtualenv in ${c_bld}${venv_dir}${c_off} ..."
+  echo_ "> Upgrading pip for Python $v virtualenv in ${c_bld}${venv_dir}${c_off} ..."
   venv_pip_ugrade_cmd="${venv_dir}/bin/pip install pip --upgrade -q"
-  echo "\$ ${c_gry}${venv_pip_ugrade_cmd}${c_off}"
+  echo_ "\$ ${c_gry}${venv_pip_ugrade_cmd}${c_off}"
   $venv_pip_ugrade_cmd
-  echo
+  echo_
 
-  echo "> Installing base dependencies to Python $v virtualenv in ${c_bld}${venv_dir}${c_off} ..."
+  echo_ "> Installing base dependencies to Python $v virtualenv in ${c_bld}${venv_dir}${c_off} ..."
   venv_install_cmd="${venv_dir}/bin/pip install -r ./scripts/venv_requirements.txt -q"
-  echo "\$ ${c_gry}${venv_install_cmd}${c_off}"
+  echo_ "\$ ${c_gry}${venv_install_cmd}${c_off}"
   $venv_install_cmd
-  echo
+  echo_
 
   unset PIP_NO_PYTHON_VERSION_WARNING
 }
@@ -213,15 +213,15 @@ function deleteVirtualenvDir() {
   local mode=$2
 
   if [ "${mode}" == "force" ]; then
-    echo "> Deleting Python $v Virtualenv in ${c_bld}${venv_dir}${c_off} ..."
+    echo_ "> Deleting Python $v Virtualenv in ${c_bld}${venv_dir}${c_off} ..."
   else
-    echo "> Deleting ${c_bld}${venv_dir}${c_off} ..."
+    echo_ "> Deleting ${c_bld}${venv_dir}${c_off} ..."
   fi
 
   venv_del_cmd="rm -rf ${venv_dir}"
-  echo "\$ ${c_gry}${venv_del_cmd}${c_off}"
+  echo_ "\$ ${c_gry}${venv_del_cmd}${c_off}"
   $venv_del_cmd
-  echo
+  echo_
 }
 
 # ----
@@ -279,19 +279,19 @@ case "$subcommand" in
     venv_dir="./.venv${v_major}"
 
     if [ -d "$venv_dir" ]; then
-      echo "🛑 Virtualenv already exists in ${c_bld}${venv_dir}${c_off}. Skipping Virtualenv creation."
+      echo_ "🛑 Virtualenv already exists in ${c_bld}${venv_dir}${c_off}. Skipping Virtualenv creation."
       venvs_present="1"
     else
       createVirtualenv $v $v_major
 
-      echo "✅ Successfuly created Python $v Virtualenv in ${c_bld}${venv_dir}${c_off} with required dependencies."
+      echo_ "✅ Successfully created Python $v Virtualenv in ${c_bld}${venv_dir}${c_off} with required dependencies."
     fi
 
-    echo
+    echo_
   done
 
   if [ "${venvs_present}" ]; then
-    echo "${c_bgrn}Hint:${c_off} Use ${c_bld}./scripts/venv destroy${c_off} to remove existing virtualenvs."
+    echo_ "${c_bgrn}Hint:${c_off} Use ${c_bld}./scripts/venv destroy${c_off} to remove existing virtualenvs."
   fi
 
   ;;
@@ -324,12 +324,12 @@ case "$subcommand" in
     findVirtualenvLib $v $v_major
     findVirtualenvDir $v $v_major
 
-    echo
+    echo_
   done
 
-  echo "${c_bgrn}Hints:${c_off}"
-  echo "- Use ${c_bld}./scripts/venv create${c_off} to create any missing Virtualenv(s) "
-  echo "- Use ${c_bld}./scripts/venv destroy${c_off} to remove existing Virtualenv(s)."
+  echo_ "${c_bgrn}Hints:${c_off}"
+  echo_ "- Use ${c_bld}./scripts/venv create${c_off} to create any missing Virtualenv(s) "
+  echo_ "- Use ${c_bld}./scripts/venv destroy${c_off} to remove existing Virtualenv(s)."
   ;;
 
 "install-deps")
@@ -361,18 +361,27 @@ case "$subcommand" in
     findVirtualenvLib $v $v_major
     findVirtualenvDir $v $v_major
 
+    # CLEANUP: figure out how best to deal with GOOGLE_CLOUD_PROJECT and the
+    # default project
+    req_args="gcp ${GOOGLE_CLOUD_PROJECT:-gen-prod}"
+    if [ "$v_major" == "2" ]; then
+      req_args="repourl"
+    fi
+    writeRequirements $req_args
+    writeRequirements --dev $req_args
+
     if [ $# -eq 0 ]; then
       args="-r requirements.txt"
     else
       args="$*"
     fi
 
-    echo "> Installing app dependencies to virtualenv..."
+    echo_ "> Installing app dependencies to virtualenv..."
     cmd="./.venv${v_major}/bin/python -m pip install $args"
-    echo "\$ ${c_bld}$cmd${c_off}"
+    echo_ "\$ ${c_bld}$cmd${c_off}"
     $cmd
 
-    echo
+    echo_
   done
 
   ;;
@@ -417,15 +426,15 @@ case "$subcommand" in
         case ${answer:0:1} in
         y | Y)
           deleteVirtualenvDir $venv_dir
-          echo
+          echo_
           ;;
         *) ;;
         esac
       fi
 
     else
-      echo "Python ${v} Virtualenv in ${c_bld}${venv_dir}${c_off} does not exist."
-      echo
+      echo_ "Python ${v} Virtualenv in ${c_bld}${venv_dir}${c_off} does not exist."
+      echo_
     fi
   done
   ;;

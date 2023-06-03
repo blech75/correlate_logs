@@ -11,7 +11,7 @@ used by our main test runner, `./scripts/test`, but also callable directly via
 `python -m scripts.test`.
 """
 
-from __future__ import absolute_import, print_function
+from __future__ import absolute_import, division, print_function
 
 import argparse
 import os

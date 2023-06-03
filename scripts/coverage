@@ -54,12 +54,6 @@ test_file_pattern=${TEST_FILE_PATTERN:-'test_*.py'}
 export TARGET_DIR="$target_dir"
 export TEST_FILE_PATTERN="$test_file_pattern"
 
-if [ "${py_version}" == "2" ]; then
-  # green is vendored in ./lib.dev, so add it to the relevant paths
-  export PATH="./lib.dev/bin:$PATH"
-  export PYTHONPATH=".:lib.dev:$PYTHONPATH"
-fi
-
 # ----
 # main
 
@@ -95,14 +89,16 @@ case ${runner} in
   omit_patterns=(
     '*/.local/*'
     '*/site-packages/*'
+    '*/google_appengine/*'
     'test/*'
     '*_test.py'
-    'appengine_config.py'
+    'data/*'
+    'dataflow/*'
+    'migrations/*'
     'add_lib_paths.py'
+    'appengine_config.py'
     'scripts/*'
     'lib/*'
-    'lib.dev/*'
-    '*/google_appengine/*'
     '.idea/*'
     '.vscode/*'
   )
@@ -120,27 +116,27 @@ case ${runner} in
     test_runner="${py_executable} -m scripts.green"
   fi
 
-  echo "Running Coverage via ${c_bld}${runner}${c_off}..."
+  echo_ "Running Coverage via ${c_bld}${runner}${c_off}..."
   cvg_run_cmd="${test_runner} $target_dir --file-pattern $test_file_pattern --run-coverage --clear-omit --omit-patterns ${omit_patterns_arg}"
-  echo "${c_gry}\$ ${cvg_run_cmd}${c_off}"
-  echo
+  echo_ "${c_gry}\$ ${cvg_run_cmd}${c_off}"
+  echo_
   $cvg_run_cmd
   ;;
 
 "unittest")
-  echo "Running Coverage via ${c_bld}${runner}${c_off}..."
+  echo_ "Running Coverage via ${c_bld}${runner}${c_off}..."
   cvg_run_cmd="${py_executable} -m scripts.coverage run --module scripts.test"
-  echo "${c_gry}\$ ${cvg_run_cmd}${c_off}"
-  echo
+  echo_ "${c_gry}\$ ${cvg_run_cmd}${c_off}"
+  echo_
   $cvg_run_cmd
   status=$?
 
   if [ $status -eq 0 ]; then
-    echo
-    echo
+    echo_
+    echo_
     cvg_rpt_cmd="${py_executable} -m scripts.coverage report --show-missing"
-    echo "${c_gry}\$ ${cvg_rpt_cmd}${c_off}"
-    echo
+    echo_ "${c_gry}\$ ${cvg_rpt_cmd}${c_off}"
+    echo_
     $cvg_rpt_cmd
   fi
   ;;

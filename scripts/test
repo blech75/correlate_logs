@@ -99,12 +99,6 @@ verbosity=""
 export TARGET_DIR="$target_dir"
 export TEST_FILE_PATTERN="$test_file_pattern"
 
-if [ "${py_version}" == "2" ]; then
-  # green is vendored in ./lib.dev, so add it to the relevant paths
-  export PATH="./lib.dev/bin:$PATH"
-  export PYTHONPATH=".:lib.dev:$PYTHONPATH"
-fi
-
 # ----
 # main
 
@@ -199,9 +193,9 @@ case ${mode} in
 "oneshot")
   # run tests once and then exit
   #
-  echo "Running tests via ${c_bld}${runner}${c_off}..."
-  echo "${c_gry}\$ ${test_cmd}${c_off}"
-  echo
+  echo_ "Running tests via ${c_bld}${runner}${c_off}..."
+  echo_ "${c_gry}\$ ${test_cmd}${c_off}"
+  echo_
   exec $test_cmd
   # we effectively exit after this due to 'exec'
   ;;
@@ -210,8 +204,7 @@ case ${mode} in
   # watch files for changes and run tests on change. (uses ag + entr)
   #
   # add --ignore-dir DIR for each ignore_dirs mentioned
-  # ignore_dirs="lib lib.dev"
-  ignore_dirs=".venv3"
+  ignore_dirs="lib"
   ignore_args=""
   for d in $ignore_dirs; do
     ignore_args="${ignore_args:+$ignore_args }--ignore-dir ${d}"
@@ -229,9 +222,9 @@ case ${mode} in
   # time (in secs) between test run finish and file watching start
   sleep_time="1"
 
-  echo "Watching test files via ${c_bld}entr${c_off} and running tests via ${c_bld}${runner}${c_off}..."
-  echo "${c_gry}\$ ${find_files_cmd} | ${watch_files_cmd}${c_off}"
-  echo
+  echo_ "Watching test files via ${c_bld}entr${c_off} and running tests via ${c_bld}${runner}${c_off}..."
+  echo_ "${c_gry}\$ ${find_files_cmd} | ${watch_files_cmd}${c_off}"
+  echo_
   until ${find_files_cmd} | ${watch_files_cmd}; do sleep $sleep_time; done
   ;;
 

@@ -5,7 +5,7 @@
 CLEANUP: investigate if required or advantageous for py3
 """
 
-from __future__ import absolute_import
+from __future__ import absolute_import, division, print_function
 
 import sys
 

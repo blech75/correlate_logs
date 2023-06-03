@@ -17,67 +17,132 @@ source "${scripts_dir}"/common
 # help
 
 function docs() {
-    echo "Start a IPython-based REPL with access to the current codebase, dev environment vars, and stubbed GAE services."
-    echo
-    echo "Can optionally connect to the Cloud Datastore Emulator, used in ${c_bld}gaedev${c_off}, for access to data imported by ${c_bld}dsbackup${c_off}."
-    echo
-    usage
+  echo "Start a IPython-based REPL with access to the current codebase, dev environment vars, and stubbed GAE services."
+  echo
+  echo "Can optionally connect to the Cloud Datastore Emulator, used in ${c_bld}gaedev${c_off}, for access to data imported by ${c_bld}dsbackup${c_off}."
+  echo
+  usage
 }
 
 function usage() {
-    echo "Usage: $(basename "$0") [-h] [-p PORT]"
-    echo
-    echo "    -p PORT       Port number of Datastore Emulator. You can get this two ways:"
-    echo
-    echo "                  - Via startup msg from \`dev_appserver.py\`:"
-    echo -n "${c_gry}"
-    echo "                      [...]"
-    echo "                      Starting Cloud Datastore emulator at: http://localhost:12345"
-    echo "${c_off}"
-    echo "                  - Via startup msg from \`gcloud beta emulators datastore start\`:"
-    echo -n "${c_gry}"
-    echo "                      [...]"
-    echo "                      [datastore]   export DATASTORE_EMULATOR_HOST=localhost:12345"
-    echo "${c_off}"
+  echo "Usage: $(basename "$0") [-h] [-p PORT]"
+  echo
+  echo "    -p PORT       Port number of Datastore Emulator. You can get this two ways:"
+  echo
+  echo "                  - Via startup msg from \`dev_appserver.py\`:"
+  echo -n "${c_gry}"
+  echo "                      [...]"
+  echo "                      Starting Cloud Datastore emulator at: http://localhost:12345"
+  echo "${c_off}"
+  echo "                  - Via startup msg from \`gcloud beta emulators datastore start\`:"
+  echo -n "${c_gry}"
+  echo "                      [...]"
+  echo "                      [datastore]   export DATASTORE_EMULATOR_HOST=localhost:12345"
+  echo "${c_off}"
 }
 
 # ----
 # defaults
 
 port=""
+log_level="${LOG_LEVEL:-debug}"
+
+# we need to uppercase log_level for use in python and `${log_level@U}` does not
+# work in bash 3.2, which ships with macOS, so we have to use `tr`. *sigh*
+log_level="$(tr '[:lower:]' '[:upper:]' <<<${log_level})"
 
 # ----
 # main
 
 while getopts ":hp:" opt; do
-    case ${opt} in
-    h)
-        showHelp
-        ;;
-    p)
-        port=${OPTARG}
-        if [ -z "${port}" ]; then
-            dieWithUsage "${error} Missing port number." \
-                "> Please specify the port number of Datastore Emulator."
-        fi
-        ;;
-    \?)
-        dieWithUsage "${error} Invalid option: -$OPTARG"
-        ;;
-    :)
-        dieWithUsage "${error} Option -$OPTARG requires an argument."
-        ;;
-    esac
+  case ${opt} in
+  h)
+    showHelp
+    ;;
+  p)
+    port=${OPTARG}
+    if [ -z "${port}" ]; then
+      dieWithUsage "${error} Missing port number." \
+        "> Please specify the port number of Datastore Emulator."
+    fi
+    ;;
+  \?)
+    dieWithUsage "${error} Invalid option: -$OPTARG"
+    ;;
+  :)
+    dieWithUsage "${error} Option -$OPTARG requires an argument."
+    ;;
+  esac
 done
 shift $((OPTIND - 1))
 
-echo
+# we need to set the APPLICATION_ID env var for the various layers of datastore
+# to work correctly. if the datastore stub is configured with this name but the
+# env var is not set, we get: app "localdev" cannot access app "_"'s data
+#
+# this value is set and used elsewhere in the tooling (dsbackup, gaedev) in
+# the same manner. if you pass in $APPLICATION_ID in one step, you must pass it
+# in everywhere.
+#
+export APPLICATION_ID="${APPLICATION_ID:=localdev}" # value: foo
 
-# pause a beat so we can see the env vars
-sleep 1
+if [ "${port}" ]; then
+  # signal we want to connect to the cloud datastore emulator. this is picked
+  # up by google.appengine.datastore.datastore_rpc._CreateDefaultConnection():
+  #
+  #   Uses environment variables to determine if the connection should be made
+  #   to Cloud Datastore v1 or to Datastore's private App Engine API.
+  #   If DATASTORE_PROJECT_ID exists, connect to Cloud Datastore v1. In this case,
+  #   either DATASTORE_APP_ID or DATASTORE_USE_PROJECT_ID_AS_APP_ID must be set to
+  #   indicate what the environment's application should be.
+  #
+  export DATASTORE_EMULATOR_HOST="localhost:${port}"
+  export DATASTORE_APP_ID="${DATASTORE_APP_ID:=${APPLICATION_ID}}" # value: foo
+  # allow access to other app ids, important for `fix_model_keys.py`
+  export DATASTORE_ADDITIONAL_APP_IDS="gen-prod,playground-194317"
+  export DATASTORE_PROJECT_ID="${DATASTORE_PROJECT_ID:=${APPLICATION_ID}}" # value: foo
+  #
+  # unsure about the need for GAE_APPLICATION in this context.
+  # export GAE_APPLICATION="${GAE_APPLICATION:=${APPLICATION_ID}}" # value: dev~foo or p~foo
+fi
 
-# enable coloredlogs support in our repl
+# use the same namespace that our app uses.
+namespace=$("${py_executable}" -m scripts.app_yaml get env_variables.NAMESPACE)
+export NAMESPACE="${NAMESPACE:=${namespace}}"
+
+echo_ ">> Datastore env vars:"
+echo_
+echo_ "   APPLICATION_ID=$APPLICATION_ID"
+echo_ "   NAMESPACE=$NAMESPACE"
+
+if [ "${DATASTORE_EMULATOR_HOST}" ]; then
+  echo_ "   DATASTORE_APP_ID=$DATASTORE_APP_ID"
+  echo_ "   DATASTORE_ADDITIONAL_APP_IDS=$DATASTORE_ADDITIONAL_APP_IDS"
+  echo_ "   DATASTORE_EMULATOR_HOST=$DATASTORE_EMULATOR_HOST"
+  echo_ "   DATASTORE_PROJECT_ID=$DATASTORE_PROJECT_ID"
+  # echo_ "   GAE_APPLICATION=$GAE_APPLICATION"
+else
+  echo_
+  echo_ ">> DATASTORE_EMULATOR_HOST is not set; Using in-memory stub for datastore."
+fi
+
+# required for taskqueue stub, so it doesn't give us a "The HTTP_HOST
+# environment variable was not set, but is required to determine the correct
+# value for the `Task.target' property." error.
+#
+# we're using a nonsensical value here because there is no HTTP server running
+# in our repl.
+export HTTP_HOST="foo"
+
+### prettify logs; see https://coloredlogs.readthedocs.io
+#
 # shellcheck source=coloredlogs.env
 source "${scripts_dir}"/coloredlogs.env
 
-exec ${py_executable} -m scripts.repl
+# export so python wrapper can pick it up.
+export LOG_LEVEL=$log_level
+export COLOREDLOGS_LOG_LEVEL=$log_level
+
+echo_
+
+exec "${py_executable}" -m scripts.repl

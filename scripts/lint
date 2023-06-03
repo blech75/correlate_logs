@@ -57,34 +57,26 @@ function usage() {
 # funcs
 
 function fail() {
-  echo -e ">> ${c_ylw}Please fix errors listed above${c_off} 🙏 💖"
+  echo_ -e ">> ${c_ylw}Please fix errors listed above${c_off} 🙏 💖"
   # exit code from tool is passed as first arg
   exit $1
 }
 
 function success() {
-  echo -e ">> ${c_grn}OK${c_off} 💯"
-  echo
+  echo_ -e ">> ${c_grn}OK${c_off} 💯"
+  echo_
 }
 
 function _modernize() {
-  # modernize is python3, picked up from pyenv (py2 projects) or pipenv (py3 projects)
-  # no config file is used
-  # CLEANUP: remove test/die after we migrate all projects to py3
-  if [ -z "$(which modernize)" ]; then
-    die "Missing modernize." \
-      "Install via: python3 -m pip install modernize"
-  fi
-
-  local args="--enforce"
-  [ "$1" == "Fixing" ] && args="-nw"
+  local args=(--enforce)
+  [ "$1" == "Fixing" ] && args=(--fix=default --nobackups --write)
 
   # using arrays to deal with quotes because bash is awesome. :-/
   local find_cmd=(find . -type f -name '*.py' -not -ipath '*lib*' -not -ipath '*.venv*' -print0)
-  local xargs_cmd=(xargs -0 modernize --no-diff "${args}")
+  local xargs_cmd=(xargs -0 ./.venv3/bin/modernize --no-diff "${args[@]}")
 
-  echo "$1 Python 3 compatibility via modernize..."
-  echo "${c_gry}\$ ${find_cmd[*]} | ${xargs_cmd[*]}${c_off}"
+  echo_ "$1 Python 3 compatibility via modernize..."
+  echo_ "${c_gry}\$ ${find_cmd[*]} | ${xargs_cmd[*]}${c_off}"
   "${find_cmd[@]}" | "${xargs_cmd[@]}" || fail $?
   success
 }
@@ -93,22 +85,8 @@ function _flake8() {
   local cmd="${venv_path}/bin/flake8 ${target_dir}"
   local path_shim=""
 
-  # check for "./lib.dev/bin" because lib_gen does not have it. in that case,
-  # flake8 is expected to be installed in site-packages for the current python
-  # version.
-  #
-  # the check for py_version makes it easier to run py2 and py3 tests on the
-  # same checkout of the codebase with py2 using frozen libs and py3 using venv.
-  if [ "${py_version}" == "2" ] && [ -d "./lib.dev/bin" ]; then
-    # flake8 is frozen in ./lib.dev. as such, we need to set PYTHONPATH to only
-    # for this command.
-    # config is in .flake8
-    cmd="./lib.dev/bin/flake8 ${target_dir}"
-    path_shim="PYTHONPATH=.:lib.dev:${PYTHONPATH}"
-  fi
-
-  echo "Checking linting via flake8..."
-  echo "${c_gry}\$ ${cmd}${c_off}"
+  echo_ "Checking linting via flake8..."
+  echo_ "${c_gry}\$ ${cmd}${c_off}"
   # CLEANUP: rework this to avoid `eval`
   eval "${path_shim} ${cmd}" || fail $?
   success
@@ -121,8 +99,8 @@ function _isort() {
 
   local cmd="./.venv3/bin/isort ${target_dir} ${args}"
 
-  echo "$1 imports via isort..."
-  echo "${c_gry}\$ ${cmd}${c_off}"
+  echo_ "$1 imports via isort..."
+  echo_ "${c_gry}\$ ${cmd}${c_off}"
   ${cmd} || fail $?
   success
 }
@@ -134,8 +112,8 @@ function _black() {
 
   local cmd="./.venv3/bin/black ${target_dir} ${args}"
 
-  echo "$1 formatting via black..."
-  echo "${c_gry}\$ ${cmd} ${c_off}"
+  echo_ "$1 formatting via black..."
+  echo_ "${c_gry}\$ ${cmd} ${c_off}"
   ${cmd} || fail $?
   success
 }

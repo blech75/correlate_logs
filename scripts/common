@@ -9,7 +9,9 @@ project_path="$(dirname "$current_dir_abs_path")"
 cd "$project_path"
 ### END: project root boilerplate --------------------------------------------
 
-# terminal colors
+# ----
+# terminal color vars
+
 c_off=$'\e[0m'
 c_bld="$(tput bold)"
 c_gry="${c_bld}$(tput setaf 0)"
@@ -23,23 +25,71 @@ c_bgrn="${c_bld}${c_grn}"
 
 error="${c_brd}Error:${c_off}"
 
+# ----
+# common funcs
+
+# echos output to stderr. used to avoid polluting stdout with "status" in
+# situations where we using stdout for writing data.
+function echo_() {
+  echo "$@" >&2
+}
+
 function showHelp() {
-  docs && exit 0
+  docs >&2 && exit 0
 }
 
 function die() {
   for msg in "$@"; do
-    echo "$msg" >&2
+    echo_ "$msg"
   done
   exit 1
 }
 
 function dieWithUsage() {
   for msg in "$@"; do
-    echo "$msg" >&2
+    echo_ "$msg"
   done
-  echo >&2
+  echo_
   usage >&2 && exit 1
+}
+
+function writeRequirements() {
+  # this is not applicable to lib_gen, which does not have `./scripts/requirements`
+  if [ ! -e './scripts/requirements' ]; then
+    return
+  fi
+
+  local req_args=()
+
+  local req_filename="requirements.txt"
+  if [ "$1" == "--dev" ]; then
+    req_filename="dev_requirements.txt"
+    req_args+=(--dev)
+    shift
+  fi
+
+  local req_mode="$1"
+  local project="$2"
+
+  if [ "$req_mode" == "gcp" ]; then
+    req_args+=(gcp "$project")
+
+  elif [ "$req_mode" == "repourl" ]; then
+    req_args+=(repourl)
+
+  elif [ "$req_mode" == "copy" ]; then
+    req_args+=(localdir)
+
+  elif [ "$req_mode" == "editable" ]; then
+    req_args+=(localdir --editable)
+  fi
+
+  local req_cmd="./scripts/requirements ${req_args[*]}"
+
+  echo_ "Writing ${req_filename}..."
+  echo_ "${c_gry}\$ ${req_cmd} > ${req_filename}${c_off}"
+  echo_
+  $req_cmd >"${req_filename}" 2>/dev/null
 }
 
 # ----
@@ -57,8 +107,7 @@ pyenv_py_versions="${pyenv_py_versions_arr[*]}"
 
 py_version="${PY:-3}"
 venv_path="./.venv${py_version}"
-venv_bin_path="${venv_path}/bin"
-py_executable="${venv_bin_path}/python"
+py_executable="${venv_path}/bin/python"
 
 # prevent using our tools without venvs created
 if [ "$(basename $0)" != "venv" ]; then
@@ -66,15 +115,16 @@ if [ "$(basename $0)" != "venv" ]; then
     die "${error} Missing Virutalenv (${c_bld}${venv_path}${c_off}) for Python ${py_version}. Use ${c_bld}./scripts/venv create${c_off} to create required Virtualenv(s)."
   fi
 
-  echo "Using Python ${c_bgrn}${py_version}${c_off} environment in ${c_bld}${venv_path}${c_off}"
-  echo
+  echo_ "Using Python ${c_bgrn}${py_version}${c_off} environment in ${c_bld}${venv_path}${c_off}"
 fi
 
 function removePythonBytecodeFiles() {
-  echo -n "Removing *.pyc files... "
-  find "$project_path" -name "*.pyc" -delete
-  echo "done!"
-  echo ""
+  local rmpyc_cmd="find $project_path -name '*.pyc' -delete"
+
+  echo_ "Removing *.pyc files... "
+  echo_ "${c_gry}\$ ${rmpyc_cmd}${c_off}"
+  $rmpyc_cmd
+  echo_
 }
 
 function readTestEnvVars() {
@@ -84,11 +134,32 @@ function readTestEnvVars() {
   # read test-specific env vars. important for lib_gen. we don't want to read in
   # the main .env var s
   if [ -f "${env_test}" ]; then
-    echo "Reading testing env vars from ${env_test} ..."
+    echo_ "Reading testing env vars from ${env_test} ..."
     # quick hack to read and then print env vars
     source "${env_test}"
-    echo
-    grep -v '^#' ${env_test} | while read line; do echo "  $line"; done
-    echo
+    echo_
+    grep -v '^#' ${env_test} | while read line; do echo_ "  $line"; done
+    echo_
   fi
 }
+
+# ----
+# display google cloud version
+
+gcloud_sdk_bin_path=$(echo "$PATH" | tr : $'\n' | grep google-cloud-sdk | head -1)
+gcloud_sdk_path="${gcloud_sdk_bin_path/\/bin/}"
+
+set +o errexit
+gcloud_sdk_version=$(cat "${gcloud_sdk_path}/VERSION" 2>/dev/null)
+set -o errexit
+
+if [ ! "$gcloud_sdk_version" ]; then
+  echo_
+  die "${error} Google Cloud SDK path is not present in \$PATH" \
+    "Please see ${c_bld}https://apartmenttherapy.slite.com/app/docs/zLsvTqP8Y/Google-Cloud-SDK${c_off}"
+fi
+
+echo_ "Using Google Cloud SDK ${c_blu}${gcloud_sdk_version}${c_off} in ${c_bld}${gcloud_sdk_path}${c_off}"
+echo_
+
+gcloud_sdk_version_major=$(echo $gcloud_sdk_version | cut -d . -f 1)

@@ -26,4 +26,4 @@ args=(
 
 dev_cmd="functions-framework ${args[*]}"
 echo "${c_gry}\$ ${dev_cmd}${c_off}"
-${venv_bin_path}/${dev_cmd}
+${venv_path}/bin/${dev_cmd}
